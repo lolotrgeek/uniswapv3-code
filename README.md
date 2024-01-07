@@ -11,6 +11,11 @@ Don't hesitate to ask questions about anything that's not clear in the book!
 
 ## How to Run
 1. Ensure you have [Foundry](https://github.com/foundry-rs/foundry) installed.
+
+    ```
+    NOTE: If on windows will need to run with WSL or Git Bash
+    ```
+
 1. Install the dependencies:
     ```shell
     $ forge install
@@ -33,4 +38,14 @@ Don't hesitate to ask questions about anything that's not clear in the book!
     ```
     0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
     ```
-1. Enjoy!
+
+![Metamask Setup screenshot](/metamask.png)
+
+<em>Import Erc20 tokens into metamask by copying the printed addresses from anvil project `make deploy` shell above in step 4.</em>
+
+## Versions
+Anvil / Forge - 0.2.0
+
+Node - 16.10.0
+
+GNU Make 4.4.1
