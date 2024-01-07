@@ -97,10 +97,14 @@ const SwapForm = ({ setPairs }) => {
       new ethers.providers.Web3Provider(window.ethereum).getSigner()
     ));
 
-    loadPairs().then((pairs) => {
+    const Setup = async () => {
+      const pairs = await loadPairs()
       const pair_ = pairs.filter((pair) => {
         return pair.token0.address === config.wethAddress || pair.token1.address === config.wethAddress;
       })[0];
+      if (!pair_) {
+        throw new Error('No WETH pair found!');
+      }
       const path_ = [
         config.wethAddress,
         pair_.fee,
@@ -111,7 +115,8 @@ const SwapForm = ({ setPairs }) => {
       setPath(path_);
       setPathFinder(new PathFinder(pairs));
       setTokens(pairsToTokens(pairs));
-    });
+    }
+    Setup()
   }, [setPairs]);
 
   /**
@@ -119,34 +124,29 @@ const SwapForm = ({ setPairs }) => {
    * 
    * @returns array of 'pair' objects.
    */
-  const loadPairs = () => {
+  const loadPairs = async () => {
     const factory = new ethers.Contract(
       config.factoryAddress,
       config.ABIs.Factory,
       new ethers.providers.Web3Provider(window.ethereum).getSigner()
     );
 
-    return factory.queryFilter("PoolCreated", "earliest", "latest")
-      .then((events) => {
-        const pairs = events.map((event) => {
-          return {
-            token0: {
-              address: event.args.token0,
-              symbol: config.tokens[event.args.token0].symbol
-            },
-            token1: {
-              address: event.args.token1,
-              symbol: config.tokens[event.args.token1].symbol
-            },
-            fee: event.args.fee,
-            address: event.args.pool
-          }
-        });
-
-        return Promise.resolve(pairs);
-      }).catch((err) => {
-        console.error(err)
-      });
+    let events = await factory.queryFilter("PoolCreated", "earliest", "latest")
+    const pairs = events.map(event => {
+      return {
+        token0: {
+          address: event.args.token0,
+          symbol: config.tokens[event.args.token0].symbol
+        },
+        token1: {
+          address: event.args.token1,
+          symbol: config.tokens[event.args.token1].symbol
+        },
+        fee: event.args.fee,
+        address: event.args.pool
+      }
+    })
+    return pairs
   }
 
 
