@@ -149,7 +149,6 @@ const SwapForm = ({ setPairs }) => {
     return pairs
   }
 
-
   /**
    * Swaps tokens by calling Manager contract. Before swapping, asks users to approve spending of tokens.
    */
@@ -198,9 +197,9 @@ const SwapForm = ({ setPairs }) => {
     const packedPath = ethers.utils.solidityPack(pathToTypes(path), path);
     const amountIn = ethers.utils.parseEther(amount);
 
-    quoter.callStatic
-      .quote(packedPath, amountIn)
+    quoter.callStatic.quote(packedPath, amountIn)
       .then(({ amountOut }) => {
+        console.log(amountOut)
         zeroForOne ? setAmount1(ethers.utils.formatEther(amountOut)) : setAmount0(ethers.utils.formatEther(amountOut));
         setLoading(false);
       })
@@ -335,6 +334,9 @@ const SwapForm = ({ setPairs }) => {
             setSlippage={setSlippage}
             slippage={slippage} />
           <button className='swap' disabled={!enabled || loading} onClick={swap}>Swap</button>
+          <div>
+            <p>Path: {path.map((address, index) => typeof(address) == 'string' ? tokenByAddress(address).symbol+'->' : '')} done!</p>
+          </div>
         </form>
         :
         <span>Loading pairs...</span>}

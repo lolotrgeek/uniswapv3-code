@@ -1,4 +1,5 @@
 import math
+import statistics
 
 min_tick = -887272
 max_tick = 887272
@@ -6,6 +7,8 @@ max_tick = 887272
 q96 = 2**96
 eth = 10**18
 
+def price(amount0, tick):
+    return math.sqrt(tick / amount0)
 
 def price_to_tick(p):
     return math.floor(math.log(p, 1.0001))
@@ -54,17 +57,30 @@ price_upp = 5500
 
 print(f"Price range: {price_low}-{price_upp}; current price: {price_cur}")
 
+amount1_tick_low = price(1, price_low)
+amount1_tick_cur = price(1, price_cur)
+amount1_tick_upp = price(1, price_upp)
+
+amount_1_low = amount1_tick_low + price_cur
+amount_1_cur = amount1_tick_cur + price_cur
+amount_1_upp = amount1_tick_upp + price_cur
+
+print(f"Amount1: {amount_1_low}-{amount_1_upp}; current amount1: {amount_1_cur}")
+
+
 sqrtp_low = price_to_sqrtp(price_low)
 sqrtp_cur = price_to_sqrtp(price_cur)
 sqrtp_upp = price_to_sqrtp(price_upp)
 
 amount_eth = 1 * eth
-amount_usdc = 5000 * eth
+
 
 liq0 = liquidity0(amount_eth, sqrtp_cur, sqrtp_upp)
+amount_usdc = calc_amount1(liq0, sqrtp_cur, sqrtp_upp)
 liq1 = liquidity1(amount_usdc, sqrtp_cur, sqrtp_low)
 liq = int(min(liq0, liq1))
 
+print(liq0, liq1)
 print(f"Deposit: {amount_eth/eth} ETH, {amount_usdc/eth} USDC; liquidity: {liq}")
 
 # Swap USDC for ETH
