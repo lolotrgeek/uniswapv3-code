@@ -1,0 +1,54 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"name": "ui",
+			"path": "../ui"
+		},
+		{
+			"name": "api",
+			"path": "."
+		},
+		{
+			"name": "prb-math",
+			"path": "../lib/prb-math"
+		},
+		{
+			"name": "solidity-bytes-utils",
+			"path": "../lib/solidity-bytes-utils"
+		},
+		{
+			"name": "solmate",
+			"path": "../lib/solmate"
+		},
+		{
+			"name": "forge-std",
+			"path": "../lib/forge-std"
+		},
+		{
+			"name": "openzeppelin-contracts",
+			"path": "../lib/openzeppelin-contracts"
+		},
+		{
+			"name": "contracts",
+			"path": "../lib/openzeppelin-contracts/contracts"
+		}
+	],
+	"settings": {
+		"solidity.packageDefaultDependenciesContractsDirectory": "src",
+		"solidity.packageDefaultDependenciesDirectory": "lib",
+		"solidity.defaultCompiler": "remote",
+		"solidity.compileUsingRemoteVersion": "v0.8.15+commit.e14f2714",
+		"jest.disabledWorkspaceFolders": [
+			"uniswapv3-code",
+			"prb-math",
+			"solidity-bytes-utils",
+			"solmate",
+			"forge-std",
+			"openzeppelin-contracts",
+			"contracts"
+		]
+	}
+}

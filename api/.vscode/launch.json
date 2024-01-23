@@ -1,0 +1,25 @@
+{
+    "configurations": [
+        
+        {
+            "type": "node",
+            "name": "vscode-jest-tests.v2",
+            "request": "launch",
+            "args": [
+                "test",
+                "--",
+                "--runInBand",
+                "--watchAll=false",
+                "--testNamePattern",
+                "${jest.testNamePattern}",
+                "--runTestsByPath",
+                "${jest.testFile}"
+            ],
+            "cwd": "c:\\Users\\Jon\\Projects\\Finance\\DefiSim\\uniswapv3-code\\api",
+            "console": "integratedTerminal",
+            "internalConsoleOptions": "neverOpen",
+            "disableOptimisticBPs": true,
+            "runtimeExecutable": "npm"
+        }
+    ]
+}
