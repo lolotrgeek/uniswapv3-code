@@ -1,0 +1,24 @@
+{
+  "name": "defisim",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Connect to a local uniswap node and interact via api.",
+  "main": "main.js",
+  "scripts": {
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
+  },
+  "author": "lolotrgeek",
+  "license": "MIT",
+  "dependencies": {
+    "@uniswap/v3-sdk": "^3.10.0",
+    "ethers": "^6.9.2",
+    "ngraph.graph": "^20.0.1",
+    "ngraph.path": "^1.5.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.23.7",
+    "@babel/preset-env": "^7.23.8",
+    "babel-jest": "^29.7.0",
+    "jest": "^29.7.0"
+  }
+}
