@@ -12,28 +12,16 @@
 			"path": "."
 		},
 		{
-			"name": "prb-math",
-			"path": "../lib/prb-math"
-		},
-		{
-			"name": "solidity-bytes-utils",
-			"path": "../lib/solidity-bytes-utils"
-		},
-		{
-			"name": "solmate",
-			"path": "../lib/solmate"
-		},
-		{
-			"name": "forge-std",
-			"path": "../lib/forge-std"
-		},
-		{
-			"name": "openzeppelin-contracts",
-			"path": "../lib/openzeppelin-contracts"
-		},
-		{
 			"name": "contracts",
-			"path": "../lib/openzeppelin-contracts/contracts"
+			"path": "../src"
+		},
+		{
+			"name": "scripts",
+			"path": "../scripts"
+		},
+		{
+			"name": "test",
+			"path": "../test"
 		}
 	],
 	"settings": {
@@ -48,7 +36,9 @@
 			"solmate",
 			"forge-std",
 			"openzeppelin-contracts",
-			"contracts"
+			"contracts",
+			"scripts",
+			"test"
 		]
 	}
 }
