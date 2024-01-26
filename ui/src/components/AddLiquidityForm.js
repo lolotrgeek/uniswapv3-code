@@ -5,6 +5,7 @@ import { uint256Max, feeToSpacing } from '../lib/constants';
 import { MetaMaskContext } from '../contexts/MetaMask';
 import { TickMath, encodeSqrtRatioX96, nearestUsableTick } from '@uniswap/v3-sdk';
 import config from "../config.js";
+import computePoolAddress from '../lib/computePoolAddress.js';
 
 const slippage = 0.5
 
@@ -62,18 +63,6 @@ const AmountInput = ({ amount, disabled, setAmount, token }) => {
   );
 }
 
-const getPool = async (token0, token1, fee) => {
-  if (!token0 || !token1) return
-  // const poolAddress = computePoolAddress(config.factoryAddress, token0, token1, fee)
-  const poolAddress = "0x0787a9981bfDEBe5730DF0Ce71A181F50d178fc9"
-  const provider = new ethers.getDefaultProvider(rpc)
-  let walletConnected = wallet.connect(provider)
-  const pool = new ethers.Contract(poolAddress, config.ABIs.Pool, walletConnected)
-  // console.log(pool.interface.fragments)
-  return pool
-}
-
-
 const Q96 = Math.pow(2, 96);
 
 function mulDiv(x, y, z) {
@@ -81,7 +70,7 @@ function mulDiv(x, y, z) {
 }
 function getLiquidityForAmount0(sqrtPriceAX96, sqrtPriceBX96, amount0) {
   if (sqrtPriceAX96 > sqrtPriceBX96) {
-      [sqrtPriceAX96, sqrtPriceBX96] = [sqrtPriceBX96, sqrtPriceAX96];
+    [sqrtPriceAX96, sqrtPriceBX96] = [sqrtPriceBX96, sqrtPriceAX96];
   }
 
   const intermediate = mulDiv(sqrtPriceAX96, sqrtPriceBX96, Q96);
@@ -92,7 +81,7 @@ function getLiquidityForAmount0(sqrtPriceAX96, sqrtPriceBX96, amount0) {
 
 function getLiquidityForAmount1(sqrtPriceAX96, sqrtPriceBX96, amount1) {
   if (sqrtPriceAX96 > sqrtPriceBX96) {
-      [sqrtPriceAX96, sqrtPriceBX96] = [sqrtPriceBX96, sqrtPriceAX96];
+    [sqrtPriceAX96, sqrtPriceBX96] = [sqrtPriceBX96, sqrtPriceAX96];
   }
 
   const liquidity = mulDiv(amount1, Q96, sqrtPriceBX96 - sqrtPriceAX96);
@@ -104,27 +93,27 @@ const getTickAtSqrtPrice = sqrtPriceX96 => Math.floor(Math.log((sqrtPriceX96 / Q
 
 function getLiquidityForAmounts(sqrtPriceX96, sqrtPriceAX96, sqrtPriceBX96, amount0, amount1) {
   if (sqrtPriceAX96 > sqrtPriceBX96) {
-      [sqrtPriceAX96, sqrtPriceBX96] = [sqrtPriceBX96, sqrtPriceAX96];
+    [sqrtPriceAX96, sqrtPriceBX96] = [sqrtPriceBX96, sqrtPriceAX96];
   }
 
   let liquidity;
   if (sqrtPriceX96 <= sqrtPriceAX96) {
-      liquidity = getLiquidityForAmount0(sqrtPriceAX96, sqrtPriceBX96, amount0);
+    liquidity = getLiquidityForAmount0(sqrtPriceAX96, sqrtPriceBX96, amount0);
   } else if (sqrtPriceX96 <= sqrtPriceBX96) {
-      const liquidity0 = getLiquidityForAmount0(sqrtPriceX96, sqrtPriceBX96, amount0);
-      const liquidity1 = getLiquidityForAmount1(sqrtPriceAX96, sqrtPriceX96, amount1);
-      console.log("liquidity0", liquidity0, "liquidity1", liquidity1)
-      if (liquidity0 < liquidity1) {
-          console.log("Choosing liquidity0")
-          liquidity = liquidity0;
-      }
-      else {
-          console.log("Choosing liquidity1")
-          liquidity = liquidity1;
-      }
-      // liquidity = liquidity0 < liquidity1 ? liquidity0 : liquidity1;
+    const liquidity0 = getLiquidityForAmount0(sqrtPriceX96, sqrtPriceBX96, amount0);
+    const liquidity1 = getLiquidityForAmount1(sqrtPriceAX96, sqrtPriceX96, amount1);
+    console.log("liquidity0", liquidity0, "liquidity1", liquidity1)
+    if (liquidity0 < liquidity1) {
+      console.log("Choosing liquidity0")
+      liquidity = liquidity0;
+    }
+    else {
+      console.log("Choosing liquidity1")
+      liquidity = liquidity1;
+    }
+    // liquidity = liquidity0 < liquidity1 ? liquidity0 : liquidity1;
   } else {
-      liquidity = getLiquidityForAmount1(sqrtPriceAX96, sqrtPriceBX96, amount1);
+    liquidity = getLiquidityForAmount1(sqrtPriceAX96, sqrtPriceBX96, amount1);
   }
 
   return liquidity;
@@ -138,27 +127,24 @@ function getLiquidityAmounts(liquidity, sqrtPriceX96, tickLow, tickHigh) {
   let amount0 = 0;
   let amount1 = 0;
   if (currentTick < tickLow) {
-      amount0 = Math.floor(liquidity * ((sqrtRatioB - sqrtRatioA) / (sqrtRatioA * sqrtRatioB)));
+    amount0 = Math.floor(liquidity * ((sqrtRatioB - sqrtRatioA) / (sqrtRatioA * sqrtRatioB)));
   }
   else if (currentTick >= tickHigh) {
-      amount1 = Math.floor(liquidity * (sqrtRatioB - sqrtRatioA));
+    amount1 = Math.floor(liquidity * (sqrtRatioB - sqrtRatioA));
   }
   else if (currentTick >= tickLow && currentTick < tickHigh) {
-      amount0 = Math.floor(liquidity * ((sqrtRatioB - sqrtPrice) / (sqrtPrice * sqrtRatioB)));
-      amount1 = Math.floor(liquidity * (sqrtPrice - sqrtRatioA));
+    amount0 = Math.floor(liquidity * ((sqrtRatioB - sqrtPrice) / (sqrtPrice * sqrtRatioB)));
+    amount1 = Math.floor(liquidity * (sqrtPrice - sqrtRatioA));
   }
 
   console.log("Amount Token0 in lowest decimal: " + amount0)
   console.log("Amount Token1 in lowest decimal: " + amount1)
   return [amount0, amount1]
 }
-async function getAmount1(amount0, token0, token1, lowerPrice, upperPrice, fee = 3000, slippage = 0.5) {
-  if (!token0 || !token1 || !lowerPrice || !upperPrice) return
 
-  const pool = await getPool(token0, token1, fee)
-  const has_slot0 = pool.interface.fragments.find(f => f.name === 'slot0')
-  if (!has_slot0) return { "error": "Pool does not have slot0" }
-  const quote = await pool.slot0()
+async function getAmount1(quote, amount0, token0, token1, lowerPrice, upperPrice, fee = 3000, slippage = 0.5) {
+  if (!quote || !token0 || !token1 || !lowerPrice || !upperPrice) return 0 
+
   let sqrtPriceX96 = Number(quote[0])
   let currentTick = Number(quote[1])
   let price = sqrtPriceToPrice(sqrtPriceX96)
@@ -169,48 +155,47 @@ async function getAmount1(amount0, token0, token1, lowerPrice, upperPrice, fee =
   const adjusted_price = base_liquidity * (Math.sqrt(price) - Math.sqrt(lowerPrice))
   // because amount0 stays static if real price is larger than the upperPrice then we get real liquidity linearly in order to get enough liquidity to account for slippage
   if (adjusted_price > upperPrice) {
-      return (amount0 * adjusted_price) + (lowerPrice * amount0 * slippage)
-  } 
+    return (amount0 * adjusted_price) + (lowerPrice * amount0 * slippage)
+  }
   // otherwise calculate real liquidity hyperbolically using Ticks
   else {
-      const lowerPriceTick = priceToTick(lowerPrice)
-      const upperPriceTick = priceToTick(upperPrice)
-      const tickLow = nearestUsableTick(lowerPriceTick, feeToSpacing[fee])
-      const tickCurrent = nearestUsableTick(currentTick, feeToSpacing[fee])
-      const tickHigh = nearestUsableTick(upperPriceTick, feeToSpacing[fee])
+    const lowerPriceTick = priceToTick(lowerPrice)
+    const upperPriceTick = priceToTick(upperPrice)
+    const tickLow = nearestUsableTick(lowerPriceTick, feeToSpacing[fee])
+    const tickCurrent = nearestUsableTick(currentTick, feeToSpacing[fee])
+    const tickHigh = nearestUsableTick(upperPriceTick, feeToSpacing[fee])
 
-      // have to adjust amount0 for slippage so virtual liquidity is not too low
-      const _min = (100 - slippage) / 100 
-      const amount0Min = amount0 * _min
-      amount0 = Number(amount0)
-      let adjusted_amount0 = amount0 - amount0Min
-      amount0 = amount0 + adjusted_amount0
-  
-      // calculate virtual liquidity from real liquidity
-      const liquidity = amount0 * (Math.sqrt(price) * Math.sqrt(upperPrice) / (Math.sqrt(upperPrice) - Math.sqrt(price)))
-      let sqrtPrice = Math.sqrt(1.0001 ** tickCurrent)
-      let sqrtRatioA = Math.sqrt(1.0001 ** tickLow)
-      let sqrtRatioB = Math.sqrt(1.0001 ** tickHigh)
-      let amount0_bound = 0
-      let amount1_bound = 0
-      if (currentTick < tickLow) amount0_bound = liquidity * ((sqrtRatioA * sqrtRatioB) / (sqrtRatioB - sqrtRatioA))
-      else if (currentTick >= tickHigh) amount1_bound = liquidity * (sqrtRatioB - sqrtRatioA)
-      else if (currentTick >= tickLow && currentTick < tickHigh) {
-          amount0_bound = liquidity * ((sqrtRatioA * sqrtRatioB) / (sqrtRatioB - sqrtRatioA))
-          amount1_bound = liquidity * (sqrtPrice - sqrtRatioA)
-      }
-      // get bound (raw, unslipped) liquidity for amount1
-      let amount1 = amount1_bound
-      let sqrtRatioAX96 = sqrtRatioA * Q96
-      let sqrtRatioBX96 = sqrtRatioB * Q96
-  
-      // get L2 adjusted for slippage
-      const Liquidity = getLiquidityForAmounts(sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, amount0, amount1)
-      const L = getLiquidityAmounts(Liquidity, sqrtPriceX96, tickLow, tickHigh)        
-      return L[1]
+    // have to adjust amount0 for slippage so virtual liquidity is not too low
+    const _min = (100 - slippage) / 100
+    const amount0Min = amount0 * _min
+    amount0 = Number(amount0)
+    let adjusted_amount0 = amount0 - amount0Min
+    amount0 = amount0 + adjusted_amount0
+
+    // calculate virtual liquidity from real liquidity
+    const liquidity = amount0 * (Math.sqrt(price) * Math.sqrt(upperPrice) / (Math.sqrt(upperPrice) - Math.sqrt(price)))
+    let sqrtPrice = Math.sqrt(1.0001 ** tickCurrent)
+    let sqrtRatioA = Math.sqrt(1.0001 ** tickLow)
+    let sqrtRatioB = Math.sqrt(1.0001 ** tickHigh)
+    let amount0_bound = 0
+    let amount1_bound = 0
+    if (currentTick < tickLow) amount0_bound = liquidity * ((sqrtRatioA * sqrtRatioB) / (sqrtRatioB - sqrtRatioA))
+    else if (currentTick >= tickHigh) amount1_bound = liquidity * (sqrtRatioB - sqrtRatioA)
+    else if (currentTick >= tickLow && currentTick < tickHigh) {
+      amount0_bound = liquidity * ((sqrtRatioA * sqrtRatioB) / (sqrtRatioB - sqrtRatioA))
+      amount1_bound = liquidity * (sqrtPrice - sqrtRatioA)
+    }
+    // get bound (raw, unslipped) liquidity for amount1
+    let amount1 = amount1_bound
+    let sqrtRatioAX96 = sqrtRatioA * Q96
+    let sqrtRatioBX96 = sqrtRatioB * Q96
+
+    // get L2 adjusted for slippage
+    const Liquidity = getLiquidityForAmounts(sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, amount0, amount1)
+    const L = getLiquidityAmounts(Liquidity, sqrtPriceX96, tickLow, tickHigh)
+    return L[1]
   }
 }
-
 
 const AddLiquidityForm = ({ toggle, token0Info, token1Info, fee }) => {
   const metamaskContext = useContext(MetaMaskContext);
@@ -221,11 +206,13 @@ const AddLiquidityForm = ({ toggle, token0Info, token1Info, fee }) => {
   const [token0, setToken0] = useState();
   const [token1, setToken1] = useState();
   const [manager, setManager] = useState();
+  const [pool, setPool] = useState();
 
   const [amount0, setAmount0] = useState("0");
   const [amount1, setAmount1] = useState("0");
-  const [lowerPrice, setLowerPrice] = useState(0);
-  const [upperPrice, setUpperPrice] = useState(0);
+  // TODO: get the price range where liquidty is concentrated from the pool
+  const [lowerPrice, setLowerPrice] = useState(4545);
+  const [upperPrice, setUpperPrice] = useState(5500);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -241,37 +228,29 @@ const AddLiquidityForm = ({ toggle, token0Info, token1Info, fee }) => {
     ));
     setManager(new ethers.Contract(
       config.managerAddress,
-      config.ABIs.Manager,
+      config.ABIs.NFTManager,
       new ethers.providers.Web3Provider(window.ethereum).getSigner()
     ));
-  }, [token0Info, token1Info]);
+    setPool(new ethers.Contract(
+      computePoolAddress(config.factoryAddress, token0Info.address, token1Info.address, fee),
+      config.ABIs.Pool,
+      new ethers.providers.Web3Provider(window.ethereum).getSigner()
+    ));
 
-  const setAmounts = (amount0) => {
+  }, [token0Info, token1Info, fee]);
+
+  const setAmounts = amount0 => {
     setAmount0(amount0)
-    if (upperPrice !== 0 || lowerPrice !== 0) {
-      const liquidity_x = 1 * Math.sqrt(price) * Math.sqrt(upperPrice) / (Math.sqrt(upperPrice) - Math.sqrt(price))
-      const adjusted_price = liquidity_x * (Math.sqrt(price) - Math.sqrt(lowerPrice))
-      console.log('liquidity_x', liquidity_x, 'adjusted_price', adjusted_price)
+    console.log(pool)
+    if (!pool) setAmount1(0) 
+    pool.slot0().then(quote => {
+      console.log(quote)
+      getAmount1(quote, amount0, token0, token1, lowerPrice, upperPrice, fee, slippage).then(amount1 => {
+        setAmount1(amount1.toString())
+      
+      })
+    })
 
-      //TODO: as low tick gets further from current tick the amount1 increases, but amount0 decreases need to model this to keep amount 0 static
-      let liquidity
-      if (adjusted_price > upperPrice) {
-        liquidity = (amount0 * adjusted_price) + (lowerPrice * amount0 * 0.5)
-        setAmount1(liquidity.toString())
-      }
-      else if (adjusted_price < lowerPrice) {
-        let liquidity_y = (amount0 * adjusted_price) + (lowerPrice * amount0 * 0.5)
-        setAmount1(liquidity_y.toString())
-      }
-      else {
-        liquidity = amount0 * (Math.sqrt(adjusted_price) * Math.sqrt(upperPrice)) / (Math.sqrt(upperPrice) - Math.sqrt(adjusted_price))
-        console.log("Liquidity: ", liquidity)
-
-        const liquidity_y = liquidity * (Math.sqrt(price) - Math.sqrt(lowerPrice))
-        setAmount1(liquidity_y.toString())
-      }
-
-    }
   }
 
   /**
@@ -365,7 +344,6 @@ const AddLiquidityForm = ({ toggle, token0Info, token1Info, fee }) => {
       alert('Failed!');
     }).finally(() => setLoading(false));
   }
-
 
 
   return (
