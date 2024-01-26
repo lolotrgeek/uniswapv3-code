@@ -1,4 +1,6 @@
-import { loadPairs, pairsToTokens, updateAmountOut, addLiquidity, setTransactionFee, getPools, getPool, getPrice, getTokenAmounts, getAmount1 } from '../main'
+import { loadPairs, pairsToTokens, updateAmountOut, addLiquidity, setTransactionFee, getPools, getPool,getLiquidity, getPrice, getTokenAmounts, getAmount1 } from '../main'
+
+// TODO: need to mock these...
 
 describe('loadPairs', () => {
   it('should load pairs from the Factory contract', async () => {
@@ -108,7 +110,7 @@ describe('setTransactionFee', () => {
 
 describe('getPools', () => {
   const token0 = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
-  const token1 = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+  const token1 = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
   const fee = 3000
 
   it('should return the pool address', async () => {
@@ -122,7 +124,7 @@ describe('getPools', () => {
 
 describe('getPool', () => {
   const token0 = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
-  const token1 = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+  const token1 = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
   const fee = 3000
 
   it('should return the pool', async () => {
@@ -240,6 +242,15 @@ describe('getAmount1', () => {
     // ratio = 1:6276
   })
 
+  it('small', async () => {
+    const amounts = await getAmount1('0.1', token0, token1, '4545', '5500')
+    expect(amounts).toBeDefined()
+    expect(amounts).toBeGreaterThan(48)
+    expect(amounts).toBeLessThan(51)
+    //NOTE: likes tickCurrent and price
+    // Add more specific assertions for the token amounts if needed
+  })  
+
   it('should return undefined if token0 or token1 is not provided', async () => {
     const amounts = await getTokenAmounts('100', null, token1, '4545', '5500')
     expect(amounts).toBeUndefined()
@@ -316,9 +327,40 @@ describe('addLiquidity', () => {
 
   })
 
+  it('Small: should call the necessary functions and return the liquidity NFT', async () => {
+
+    // Call the addLiquidity function
+    const liquidityNFT = await addLiquidity(token0, token1, '.001', 3000, "4545", "5500", 0.5)
+    let parsed_result
+    if (typeof liquidityNFT === 'string') try { parsed_result = JSON.parse(liquidityNFT) } catch (e) { parsed_result = liquidityNFT }
+    parsed_result = liquidityNFT
+    console.log(parsed_result)
+    expect(parsed_result).toBeDefined()
+    expect(typeof parsed_result).toBe('object')
+    expect(parsed_result['blockHash']).toBeDefined()
+    expect(parsed_result['blockNumber']).toBeDefined()
+    expect(parsed_result['from']).toBeDefined()
+
+  })
+  
+  it('Large: should call the necessary functions and return the liquidity NFT', async () => {
+
+    // Call the addLiquidity function
+    const liquidityNFT = await addLiquidity(token0, token1, "10", 3000, "4545", "5500", 0.5)
+    let parsed_result
+    if (typeof liquidityNFT === 'string') try { parsed_result = JSON.parse(liquidityNFT) } catch (e) { parsed_result = liquidityNFT }
+    parsed_result = liquidityNFT
+    console.log(parsed_result)
+    expect(parsed_result).toBeDefined()
+    expect(typeof parsed_result).toBe('object')
+    expect(parsed_result['blockHash']).toBeDefined()
+    expect(parsed_result['blockNumber']).toBeDefined()
+    expect(parsed_result['from']).toBeDefined()
+
+  })  
+
   it('should return undefined if token0 or token1 is not provided', async () => {
     const liquidityNFT = await addLiquidity(null, token1, amount0)
     expect(liquidityNFT).toBeUndefined()
   })
 })
-
