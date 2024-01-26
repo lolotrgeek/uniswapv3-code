@@ -3,3 +3,4 @@ cache/
 out/
 __pycache__
 api/node_modules/
+api/coverage
