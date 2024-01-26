@@ -3,11 +3,18 @@ import config from "./config.js"
 import { TickMath, encodeSqrtRatioX96, nearestUsableTick } from '@uniswap/v3-sdk'
 import { uint256Max, feeToSpacing } from './src/lib/constants.js'
 import PathFinder from './src/lib/pathFinder.js'
+import computePoolAddress from './src/lib/computePoolAddress.js'
+
 
 // Account
 const address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 const pk = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 const wallet = new ethers.Wallet(pk)
+
+const address1 = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" 
+const pk1 = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+const wallet1 = new ethers.Wallet(pk1)
+
 const rpc = "http://localhost:8545/"
 
 const q96 = 2 ** 96
@@ -111,19 +118,106 @@ const getPools = async () => {
 
 const getPool = async (token0, token1, fee) => {
     if (!token0 || !token1) return
-    // const poolAddress = computePoolAddress(config.factoryAddress, token0, token1, fee)
-    // TODO: lookup pool address
-    const poolAddress = "0x0787a9981bfDEBe5730DF0Ce71A181F50d178fc9"
+    const poolAddress = computePoolAddress(config.factoryAddress, token0, token1, fee)
     const provider = new ethers.getDefaultProvider(rpc)
     let walletConnected = wallet.connect(provider)
     const pool = new ethers.Contract(poolAddress, config.ABIs.Pool, walletConnected)
-    // console.log(pool.interface.fragments)
+    // console.log(pool.interface.fragments.map(f => ({type: f.type, name: f.name})))
     return pool
 }
 
+const getManager = async () => {
+    const provider = new ethers.getDefaultProvider(rpc)
+    let walletConnected = wallet.connect(provider)
+    const manager = new ethers.Contract(config.managerAddress, config.ABIs.Manager, walletConnected)
+    // console.log(manager.interface.fragments)
+    // console.log(manager.interface.fragments.map(f => ({type: f.type, name: f.name})))
+    return manager
+}
+
 const getLiquidity = async (token0, token1, fee) => {
+    if (!token0 || !token1) return
+
     const pool = await getPool(token0, token1, fee)
-    const liquidity = await pool.positions()
+    if (!pool) return
+    const liquidity_fragment = pool.interface.fragments.find(f => f.name === 'liquidity')
+    if (liquidity_fragment === undefined) return { "error": "Pool does not have liquidity" }
+    console.log(liquidity_fragment)
+    const liquidity = await pool.liquidity()
+    return liquidity
+}
+
+/**
+ * Traverse the Tick Bitmap to create a liquidity distribution (see which ticks liquidity is concentrated)
+ * @param {*} token0 
+ * @param {*} token1 
+ * @param {*} fee 
+ */
+const getLiquidityDistribution = async (token0, token1, fee) => {
+    if (!token0 || !token1) return
+
+    const pool = await getPool(token0, token1, fee)
+    if (!pool) return
+    const bitmap_fragment = pool.interface.fragments.find(f => f.name === 'tickBitmap')
+    if (bitmap_fragment === undefined) return { "error": "Pool does not have tickBitmap" }
+    // console.log(bitmap_fragment)
+    const bitmap = await pool.tickBitmap()
+    return bitmap
+
+}
+
+const getPosition = async (token0, token1, fee, lowerPrice, upperPrice) => {
+    const manager = await getManager()
+    const lowerTick = priceToTick(lowerPrice)
+    const upperTick = priceToTick(upperPrice)
+    const params = {
+        tokenA: token0,
+        tokenB: token1,
+        fee: fee,
+        owner: address,
+        lowerTick: nearestUsableTick(lowerTick, feeToSpacing[fee]),
+        upperTick: nearestUsableTick(upperTick, feeToSpacing[fee]),
+    }
+    const positions = await manager.getPosition(params)
+    if (!positions) return
+    return {
+        liquidity: positions[0],
+        feeGrowthInside0LastX128: positions[1],
+        feeGrowthInside1LastX128: positions[2],
+        tokensOwed0: positions[3],
+        tokensOwed1: positions[4]
+    }
+}
+
+const getNFTPosition = async (token0, token1, fee, lowerPrice, upperPrice) => {
+    // TODO: ... or just track the positions in a simple db
+
+    const pool = await getPool(token0, token1, fee)
+    if (!pool) return
+    const position_fragment = pool.interface.fragments.find(f => f.name === 'positions')
+    if (position_fragment === undefined) return { "error": "Pool does not have positions" }
+    console.log(position_fragment)
+
+    const provider = new ethers.getDefaultProvider(rpc)
+    let walletConnected = wallet.connect(provider)
+    const manager = new ethers.Contract(config.managerAddress, config.ABIs.NFTManager, walletConnected)
+
+    //TODO: read nft to get the position key
+    // 32byte hash of owner, lowerTick, upperTick
+    // The keys for the mapping
+    const owner = address;
+    const lowerPriceTick = priceToTick(lowerPrice)
+    const upperPriceTick = priceToTick(upperPrice)
+
+    const lowerTick = nearestUsableTick(lowerPrice, feeToSpacing[fee])
+    const upperTick = nearestUsableTick(upperPrice, feeToSpacing[fee])
+
+    // Compute the keccak256 hash of the keys to get the location of the value in storage
+    const positionKey = ethers.solidityPackedKeccak256(
+        ['address', 'int24', 'int24'],
+        [owner, lowerTick, upperTick]
+    );
+    const liquidity = await pool.positions(positionKey)
     return liquidity
 }
 
@@ -178,6 +272,7 @@ const getPrice = async (token0, token1, fee) => {
     }
 }
 
+// add Liquidity Helper Functions
 function mulDiv(x, y, z) {
     return Math.floor((x * y) / z)
 }
@@ -205,6 +300,15 @@ function getLiquidityForAmount1(sqrtPriceAX96, sqrtPriceBX96, amount1) {
     return liquidity
 }
 
+/**
+ * Calculates L2 liquidity for given amount0 and amount1
+ * @param {*} sqrtPriceX96 
+ * @param {*} sqrtPriceAX96 
+ * @param {*} sqrtPriceBX96 
+ * @param {*} amount0 
+ * @param {*} amount1 
+ * @returns 
+ */
 function getLiquidityForAmounts(sqrtPriceX96, sqrtPriceAX96, sqrtPriceBX96, amount0, amount1) {
     if (sqrtPriceAX96 > sqrtPriceBX96) {
         [sqrtPriceAX96, sqrtPriceBX96] = [sqrtPriceBX96, sqrtPriceAX96]
@@ -233,6 +337,14 @@ function getLiquidityForAmounts(sqrtPriceX96, sqrtPriceAX96, sqrtPriceBX96, amou
     return liquidity
 }
 
+/**
+ * Calculates real amounts from virtual liquidity L2
+ * @param {*} liquidity 
+ * @param {*} sqrtPriceX96 
+ * @param {*} tickLow 
+ * @param {*} tickHigh 
+ * @returns 
+ */
 function getLiquidityAmounts(liquidity, sqrtPriceX96, tickLow, tickHigh) {
     let sqrtRatioA = Math.sqrt(1.0001 ** tickLow)
     let sqrtRatioB = Math.sqrt(1.0001 ** tickHigh)
@@ -390,7 +502,7 @@ async function getAmount1(amount0, token0, token1, lowerPrice, upperPrice, fee =
     // because amount0 stays static if real price is larger than the upperPrice then we get real liquidity linearly in order to get enough liquidity to account for slippage
     if (adjusted_price > upperPrice) {
         return (amount0 * adjusted_price) + (lowerPrice * amount0 * slippage)
-    }
+    } 
     // otherwise calculate real liquidity hyperbolically using Ticks
     else {
         const lowerPriceTick = priceToTick(lowerPrice)
@@ -402,11 +514,14 @@ async function getAmount1(amount0, token0, token1, lowerPrice, upperPrice, fee =
         // have to adjust amount0 for slippage so virtual liquidity is not too low
         const _min = (100 - slippage) / 100
         const amount0Min = amount0 * _min
+        
+        let adjusted_amount0 = 0
         amount0 = Number(amount0)
-        let adjusted_amount0 = amount0 - amount0Min
+        adjusted_amount0 = amount0 - amount0Min
         amount0 = amount0 + adjusted_amount0
+        console.log("amount0", amount0, "amount0Min", amount0Min) 
 
-        // calculate virtual liquidity from real liquidity
+        // calculate virtual liquidity from real liquidity (amount0 -> L0)
         const liquidity = amount0 * (Math.sqrt(price) * Math.sqrt(upperPrice) / (Math.sqrt(upperPrice) - Math.sqrt(price)))
         let sqrtPrice = Math.sqrt(1.0001 ** tickCurrent)
         let sqrtRatioA = Math.sqrt(1.0001 ** tickLow)
@@ -419,13 +534,16 @@ async function getAmount1(amount0, token0, token1, lowerPrice, upperPrice, fee =
             amount0_bound = liquidity * ((sqrtRatioA * sqrtRatioB) / (sqrtRatioB - sqrtRatioA))
             amount1_bound = liquidity * (sqrtPrice - sqrtRatioA)
         }
-        // get bound (raw, unslipped) liquidity for amount1
+        // get L1 or bound (raw, unslipped) liquidity for amount1
         let amount1 = amount1_bound
+        // with amounts below 1 no need to adjust L1 for slippage
+        if (amount0 < 1) return amount1
         let sqrtRatioAX96 = sqrtRatioA * q96
         let sqrtRatioBX96 = sqrtRatioB * q96
 
-        // get L2 adjusted for slippage
+        // get L2 from real amounts adjusted for slippage
         const Liquidity = getLiquidityForAmounts(sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, amount0, amount1)
+        // convert L2 to into real amounts (L2 -> [amount0, amount1])
         const L = getLiquidityAmounts(Liquidity, sqrtPriceX96, tickLow, tickHigh)
         return L[1]
     }
@@ -448,7 +566,7 @@ const addLiquidity = async (token0, token1, amount0, fee, lowerPrice, upperPrice
         if (!token0 || !token1) return
         const provider = new ethers.getDefaultProvider(rpc)
         let walletConnected = wallet.connect(provider)
-        const manager = new ethers.Contract(config.managerAddress, config.ABIs.Manager, walletConnected)
+        const manager = await getManager()
         const Token0 = new ethers.Contract(token0, config.ABIs.ERC20, walletConnected)
         const Token1 = new ethers.Contract(token1, config.ABIs.ERC20, walletConnected)
 
@@ -460,11 +578,11 @@ const addLiquidity = async (token0, token1, amount0, fee, lowerPrice, upperPrice
         const amount0Min = ethers.parseEther(amount0min.toString())
 
         const amount1 = await getAmount1(amount0, token0, token1, lowerPrice, upperPrice, fee, slippage)
+        console.log("amount1", amount1)
         const amount1Desired = ethers.parseEther(amount1.toString())
         const amount1Min = ethers.parseEther((amount1 * _min / 10000).toString())
 
         console.log(amount0Min, amount1Min)
-        console.log('amount1', amount1)
         if (amount1Desired < 0) return 'Invalid amount!'
         if (amount1Desired === amount0Desired) return 'Same amount!'
 
@@ -500,6 +618,7 @@ const addLiquidity = async (token0, token1, amount0, fee, lowerPrice, upperPrice
 
 
         const mintParams = {
+            recipient: address,
             tokenA: token0,
             tokenB: token1,
             fee,
@@ -511,32 +630,40 @@ const addLiquidity = async (token0, token1, amount0, fee, lowerPrice, upperPrice
             amount1Min
         }
 
-        console.log(mintParams)
+        console.log('params', mintParams)
 
         const allowance0 = await Token0.allowance(address, config.managerAddress)
         const allowance1 = await Token1.allowance(address, config.managerAddress)
 
         if (allowance0 < amount0Desired) {
             const approve0 = await Token0.approve(config.managerAddress, uint256Max)
-            const approve0_receipt = approve0.wait()
-            console.log('approve0', approve0, approve0_receipt)
+            const approve0_receipt = await approve0.wait()
+            console.log('approve0', approve0_receipt.logs[0].args)
 
         }
         if (allowance1 < amount1Desired) {
             const approve1 = await Token1.approve(config.managerAddress, uint256Max)
-            const approve1_receipt = approve1.wait()
-            console.log('approve1', approve1, approve1_receipt)
+            const approve1_receipt = await approve1.wait()
+            console.log('approve1', approve1_receipt.logs[0].args)
         }
         console.log('minting...')
         const tx = await manager.mint(mintParams)
-        const liquidityNFT = tx.wait()
-        // add gas price and sign...
-        console.log(liquidityNFT)
+        const liquidityNFT = await tx.wait()
+
+        // const pool = await getPool(token0, token1, fee)
+        // let events = await pool.queryFilter('Mint',liquidityNFT.blockNumber, liquidityNFT.blockNumber)
+        // console.log(events)
+
+        // const iface = new ethers.Interface(config.ABIs.Manager)
+        // if (tx && tx.data) {
+        //     return iface.parseTransaction(tx)
+
+        // }
         return liquidityNFT
     } catch (err) {
         const provider = new ethers.getDefaultProvider(rpc)
         let walletConnected = wallet.connect(provider)
-        const manager = new ethers.Contract(config.managerAddress, config.ABIs.Manager, walletConnected)
+        const manager = new ethers.Contract(config.managerAddress, config.ABIs.NFTManager, walletConnected)
         let error
 
         if (err && err.info && err.info.error && err.info.error.data) {
@@ -568,26 +695,15 @@ const addLiquidity = async (token0, token1, amount0, fee, lowerPrice, upperPrice
 }
 
 /**
- * Fetches available liquidity from a position.
+ * 
+ * @param {*} token0 address
+ * @param {*} token1 address
+ * @param {BigInt} amount liquidity amount (get from getPosition)
+ * @param {Number} fee pool fee
+ * @param {Number} lowerPrice 
+ * @param {Number} upperPrice 
+ * @returns 
  */
-const getAvailableLiquidity = (amount, isLower) => {
-    const lowerTick = priceToTick(isLower ? amount : lowerPrice)
-    const upperTick = priceToTick(isLower ? upperPrice : amount)
-
-    const params = {
-        tokenA: token0.address,
-        tokenB: token1.address,
-        fee: fee,
-        owner: account,
-        lowerTick: nearestUsableTick(lowerTick, feeToSpacing[fee]),
-        upperTick: nearestUsableTick(upperTick, feeToSpacing[fee]),
-    }
-
-    manager.getPosition(params)
-        .then(position => setAvailableAmount(position.liquidity.toString()))
-        .catch(err => console.error(err))
-}
-
 const removeLiquidity = async (token0, token1, amount, fee, lowerPrice, upperPrice) => {
     try {
         if (!token0 || !token1) return
@@ -600,42 +716,85 @@ const removeLiquidity = async (token0, token1, amount, fee, lowerPrice, upperPri
         const tx = await pool.burn(lowerTick, upperTick, amount)
         console.log(tx)
         const receipt = await tx.wait()
-        if (!receipt.events[0] || receipt.events[0].event !== "Burn") {
+        if (!receipt || !receipt.events || !receipt.events[0] || receipt.events[0].event !== "Burn") {
             throw Error("Missing Burn event after burning!")
         }
         const amount0Burned = receipt.events[0].args.amount0
         const amount1Burned = receipt.events[0].args.amount1
-        const collect_tx = await pool.collect(account, lowerTick, upperTick, amount0Burned, amount1Burned)
+        const collect_tx = await pool.collect(address, lowerTick, upperTick, amount0Burned, amount1Burned)
         const collect_recepit = await collect_tx.wait()
+        return collect_recepit
     } catch (error) {
         console.error(error)
     }
 
 }
 
+const collectFees = async (token0, token1, fee, lowerPrice, upperPrice) => {
+    try {
+        if (!token0 || !token1) return
+
+        const lowerTick = nearestUsableTick(priceToTick(lowerPrice), feeToSpacing[fee])
+        const upperTick = nearestUsableTick(priceToTick(upperPrice), feeToSpacing[fee])
+
+        const position = await getPosition(token0, token1, 3000, lowerPrice, upperPrice)
+        const pool = await getPool(token0, token1, fee)
+        const collect_tx = await pool.collect(address, lowerTick, upperTick, position.tokensOwed0, position.tokensOwed1)
+        const collect_recepit = await collect_tx.wait()
+        return collect_recepit
+    } catch (error) {
+        console.error(error)
+    }
+}
 
 /**
  * Swaps tokens by calling Manager contract. Before swapping, asks users to approve spending of tokens.
  */
-const swap = async (token0, token1, amount0, amount1) => {
+const swap = async (token0, token1, amount0, slippage = 0.1) => {
     try {
+
+
         const pairs = await loadPairs()
         const pathFinder = new PathFinder(pairs)
         const path = pathFinder.findPath(token0, token1)
+
+        const provider = new ethers.getDefaultProvider(rpc)
+        let walletConnected = wallet1.connect(provider)
+    
+        const quoter = new ethers.Contract(config.quoterAddress, config.ABIs.Quoter, walletConnected)
+        const packedPath = ethers.solidityPacked(pathToTypes(path), path)
         const amountIn = ethers.parseEther(amount0)
-        const amountOut = ethers.parseEther(amount1)
-        const minAmountOut = amountOut.mul((100 - parseFloat(slippage)) * 100).div(10000)
-        const packedPath = ethers.solidityPack(pathToTypes(path), path)
+        const quote = await quoter.quote.staticCall(packedPath, amountIn)
+        const amountOut = quote[0]
+        const _min = BigInt( (100 - slippage) * 100)
+        const minAmountOut = ethers.parseEther(ethers.formatEther(amountOut * _min / BigInt(10000)))
+        console.log(amountOut, minAmountOut)
         const params = {
             path: packedPath,
-            recipient: account,
+            recipient: address,
             amountIn: amountIn,
             minAmountOut: minAmountOut
         }
+        const tokenIn = new ethers.Contract(config.wethAddress, config.ABIs.ERC20, walletConnected)
         const token = tokenIn.attach(path[0])
-        const allowance = await token.allowance(account, config.managerAddress)
-        if (allowance.lt(amountIn)) return token.approve(config.managerAddress, uint256Max).then(tx => tx.wait())
-        return manager.swap(params).then(tx => tx.wait())
+        const allowance = await token.allowance(address, config.managerAddress)
+        if (allowance < amountIn) {
+            const approve_tx = await token.approve(config.managerAddress, uint256Max)
+            await approve_tx.wait()
+        }
+        
+        const manager = await getManager()
+        const tx = await manager.swap(params)
+        const swap_confirm = await tx.wait()
+        // add gas price and sign...
+        console.log(swap_confirm)
+        const iface = new ethers.Interface(config.ABIs.Manager)
+        if (tx && tx.data) {
+            const parsed_result = iface.parseTransaction(tx)
+            if (parsed_result && parsed_result.args) return  parsed_result.args[0]
+        
+        }
+        return swap_confirm
     } catch (err) {
         console.error(err)
     }
@@ -643,4 +802,4 @@ const swap = async (token0, token1, amount0, amount1) => {
 
 
 
-export { loadPairs, pairsToTokens, updateAmountOut, setTransactionFee, getPools, getPool, getPrice, getTokenAmounts, getAmount1, getLiquidity, addLiquidity, getAvailableLiquidity, removeLiquidity, swap }
+export { loadPairs, pairsToTokens, updateAmountOut, setTransactionFee, getManager, getPosition, getPools, getPool, getPrice, getTokenAmounts, getLiquidityDistribution, getAmount1, getLiquidity, addLiquidity, removeLiquidity, collectFees, swap }
