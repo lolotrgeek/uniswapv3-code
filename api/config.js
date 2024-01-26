@@ -5,12 +5,14 @@ const config = {
   factoryAddress: '0x5FC8d32690cc91D4c39d9d3abcBD16989F875707',
   managerAddress: '0x0165878A594ca255338adfa4d48449f69242Eb8F',
   quoterAddress: '0xa513E6E4b8f2a923D98304ec87F64353C4D5C853',
+  // nftAddress: '0x0165878A594ca255338adfa4d48449f69242Eb8F',
   ABIs: {
     'ERC20': require('./src/abi/ERC20.json'),
     'Factory': require('./src/abi/Factory.json'),
     'Manager': require('./src/abi/Manager.json'),
     'Pool': require('./src/abi/Pool.json'),
-    'Quoter': require('./src/abi/Quoter.json')
+    'Quoter': require('./src/abi/Quoter.json'),
+    'NFTManager': require('./src/abi/NFTManager.json'),
   }
 }
 
