@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { poolCodeHash } from './constants';
+import { poolCodeHash } from './constants.js';
 
 const sortTokens = (tokenA, tokenB) => {
   return tokenA.toLowerCase() < tokenB.toLowerCase ? [tokenA, tokenB] : [tokenB, tokenA];
