@@ -237,6 +237,45 @@ contract UniswapV3NFTManager is ERC721 {
         totalSupply--;
     }
 
+    struct GetPositionParams {
+        address tokenA;
+        address tokenB;
+        uint24 fee;
+        address owner;
+        int24 lowerTick;
+        int24 upperTick;
+    }
+
+    function getPosition(GetPositionParams calldata params)
+        public
+        view
+        returns (
+            uint128 liquidity,
+            uint256 feeGrowthInside0LastX128,
+            uint256 feeGrowthInside1LastX128,
+            uint128 tokensOwed0,
+            uint128 tokensOwed1
+        )
+    {
+        IUniswapV3Pool pool = getPool(params.tokenA, params.tokenB, params.fee);
+
+        (
+            liquidity,
+            feeGrowthInside0LastX128,
+            feeGrowthInside1LastX128,
+            tokensOwed0,
+            tokensOwed1
+        ) = pool.positions(
+            keccak256(
+                abi.encodePacked(
+                    params.owner,
+                    params.lowerTick,
+                    params.upperTick
+                )
+            )
+        );
+    }    
+
     ////////////////////////////////////////////////////////////////////////////
     //
     // CALLBACKS
@@ -255,6 +294,7 @@ contract UniswapV3NFTManager is ERC721 {
         IERC20(extra.token0).transferFrom(extra.payer, msg.sender, amount0);
         IERC20(extra.token1).transferFrom(extra.payer, msg.sender, amount1);
     }
+
 
     ////////////////////////////////////////////////////////////////////////////
     //
