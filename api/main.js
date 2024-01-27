@@ -1,13 +1,11 @@
 import { ethers } from "ethers"
 import config from "./config.js"
-import { TickMath, encodeSqrtRatioX96, nearestUsableTick } from '@uniswap/v3-sdk'
+import { nearestUsableTick } from '@uniswap/v3-sdk'
 import { uint256Max, feeToSpacing } from './src/lib/constants.js'
 import PathFinder from './src/lib/pathFinder.js'
 import computePoolAddress from './src/lib/computePoolAddress.js'
-import pairsToTokens from "./src/lib/paisToTokens.js"
-import { q96, countPathTokens, getTickAtSqrtPrice, pathToTypes, priceToSqrtP, priceToTick, sqrtPriceToPrice, tokenByAddress } from './src/lib/utils.js'
+import { q96, pathToTypes, priceToTick, sqrtPriceToPrice, tickToPrice } from './src/lib/utils.js'
 import { getLiquidityForAmounts, getLiquidityAmounts, getLiquidityForAmount0, getLiquidityForAmount1 } from "./src/lib/liquidityMath.js"
-
 
 class API {
     constructor(wallet) {
@@ -87,7 +85,8 @@ class API {
         try {
             const transaction = await this.factory.createPool(tokenX, tokenY, fee);
             const receipt = await transaction.wait();
-            const poolAddress = receipt.events?.find(e => e.event === 'PoolCreated')?.args?.pool;
+            let events = await this.factory.queryFilter("PoolCreated", "earliest", "latest")
+            const poolAddress = events?.find(event => event === 'PoolCreated')?.args?.pool;
             return poolAddress;
         } catch (error) {
             console.error('Failed to create pool:', error);
@@ -184,7 +183,7 @@ class API {
             upperTick: nearestUsableTick(upperTick, feeToSpacing[fee]),
         }
         const positions = await this.manager.getPosition(params)
-        if (!positions) return
+        if (!positions) return 
         return {
             liquidity: positions[0],
             feeGrowthInside0LastX128: positions[1],
@@ -300,7 +299,7 @@ class API {
     getAmount1 = async (amount0, token0, token1, lowerPrice, upperPrice, fee = 3000, slippage = 0.5) => {
         if (!token0 || !token1 || !lowerPrice || !upperPrice) return
 
-        const pool = await getPool(token0, token1, fee)
+        const pool = await this.getPool(token0, token1, fee)
         const has_slot0 = pool.interface.fragments.find(f => f.name === 'slot0')
         if (!has_slot0) return { "error": "Pool does not have slot0" }
         const quote = await pool.slot0()
@@ -388,7 +387,7 @@ class API {
             let amount0min = amount0 * _min / 10000
             const amount0Min = ethers.parseEther(amount0min.toString())
 
-            const amount1 = await getAmount1(amount0, token0, token1, lowerPrice, upperPrice, fee, slippage)
+            const amount1 = await this.getAmount1(amount0, token0, token1, lowerPrice, upperPrice, fee, slippage)
             console.log("amount1", amount1)
             const amount1Desired = ethers.parseEther(amount1.toString())
             const amount1Min = ethers.parseEther((amount1 * _min / 10000).toString())
@@ -491,6 +490,7 @@ class API {
             else error = err
 
             console.error(err)
+            return err
         }
     }
 
@@ -563,17 +563,13 @@ class API {
      */
     swap = async (token0, token1, amount0, slippage = 0.1) => {
         try {
-            const pairs = await loadPairs()
+            const pairs = await this.loadPairs()
             const pathFinder = new PathFinder(pairs)
             const path = pathFinder.findPath(token0, token1)
 
-            const provider = new ethers.getDefaultProvider(rpc)
-            let walletConnected = wallet1.connect(provider)
-
-            const quoter = new ethers.Contract(config.quoterAddress, config.ABIs.Quoter, walletConnected)
             const packedPath = ethers.solidityPacked(pathToTypes(path), path)
             const amountIn = ethers.parseEther(amount0)
-            const quote = await quoter.quote.staticCall(packedPath, amountIn)
+            const quote = await this.quoter.quote.staticCall(packedPath, amountIn)
             const amountOut = quote[0]
             const _min = BigInt((100 - slippage) * 100)
             const minAmountOut = ethers.parseEther(ethers.formatEther(amountOut * _min / BigInt(10000)))
@@ -584,7 +580,7 @@ class API {
                 amountIn: amountIn,
                 minAmountOut: minAmountOut
             }
-            const tokenIn = new ethers.Contract(config.wethAddress, config.ABIs.ERC20, walletConnected)
+            const tokenIn = new ethers.Contract(config.wethAddress, config.ABIs.ERC20, this.walletConnected)
             const token = tokenIn.attach(path[0])
             const allowance = await token.allowance(this.address, config.managerAddress)
             if (allowance < amountIn) {
@@ -592,17 +588,8 @@ class API {
                 await approve_tx.wait()
             }
 
-            const manager = await getManager()
-            const tx = await manager.swap(params)
+            const tx = await this.manager.swap(params)
             const swap_confirm = await tx.wait()
-            // add gas price and sign...
-            console.log(swap_confirm)
-            const iface = new ethers.Interface(config.ABIs.Manager)
-            if (tx && tx.data) {
-                const parsed_result = iface.parseTransaction(tx)
-                if (parsed_result && parsed_result.args) return parsed_result.args[0]
-
-            }
             return swap_confirm
         } catch (err) {
             console.error(err)
